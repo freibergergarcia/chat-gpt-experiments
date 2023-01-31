@@ -1,4 +1,4 @@
-name: Check for SPP- Commits
+name: SPP Commit Check
 
 on:
   pull_request:
@@ -10,26 +10,29 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Get pull request commits
-      id: get_commits
-      run: |
-        echo "::set-output name=commits::$(curl -s https://api.github.com/repos/${GITHUB_REPOSITORY}/pulls/${GITHUB_PULL_REQUEST}/commits | jq '.[].sha')"
+    - name: Get pull request details
+      id: pr_details
+      run: echo "::set-output name=pull_request_number::${{ github.event.pull_request.number }}"
+      
+    - name: Get repo name
+      id: repo_name
+      run: echo "::set-output name=repo_name::${{ github.repository }}"
 
-    - name: Filter SPP- Commits
-      id: filter_commits
-      run: |
-        echo "::set-output name=filtered_commits::$(echo "${GITHUB_EVENT_PATH}" | jq '."pull_request".commits | map(select(.message | test("^SPP-[0-9]{5}.*")) | .message) | unique | join(",\n")')"
+    - name: Checkout code
+      uses: actions/checkout@v2
 
-    - name: Cut commit message
-      id: cut_commit_message
+    - name: Get SPP Commits
+      id: spp_commits
       run: |
-        echo "::set-output name=cut_commits::$(echo "${steps.filter_commits.outputs.filtered_commits}" | sed 's/^SPP-[0-9]\{5\} //g')"
+        commits=$(git log --pretty=format:"%s" HEAD...${{ github.base_ref }} | grep "^SPP-[0-9]\{5\}" | awk '{print $1}')
+        echo "::set-output name=spp_commits::$commits"
 
-    - name: Add comment to pull request
-      if: steps.cut_commit_message.outputs.cut_commits != ''
-      run: |
-        curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-        -X POST \
-        -d "{\"body\":\"Commits related to SPP-: \n\`\`\`\n${{ steps.cut_commit_message.outputs.cut_commits }}\n\`\`\`\"}" \
-        https://api.github.com/repos/$GITHUB_REPOSITORY/issues/$GITHUB_PULL_REQUEST/comments
-        
+    - name: Add SPP Commit List as Comment
+      if: steps.spp_commits.outputs.spp_commits != ''
+      uses: peter-evans/create-or-update-pull-request-comment@v1
+      with:
+        pull_request_number: ${{ steps.pr_details.outputs.pull_request_number }}
+        repository_name: ${{ steps.pr_details.outputs.repo_name }}
+        comment: |
+          ## SPP Commits
+          $(echo "${{ steps.spp_commits.outputs.spp_commits }}" | tr '\n' '\n' | sort | uniq)
