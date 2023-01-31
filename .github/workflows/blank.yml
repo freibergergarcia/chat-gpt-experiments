@@ -1,35 +1,39 @@
-name: Check for SPP- Commits
+name: Add SPP- commits as comment on pull request
 
 on:
   pull_request:
-    branches:
-      - main
+    types: [opened]
 
 jobs:
-  verify_commits:
+  process_commits:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Get pull request commits
-      id: get_commits
+    - name: Check branch name
+      if: contains(github.event.pull_request.head.ref, 'main')
       run: |
-        echo "::set-output name=commits::$(curl -s https://api.github.com/repos/${GITHUB_REPOSITORY}/pulls/${GITHUB_PULL_REQUEST}/commits | jq '.[].sha')"
+        echo "Branch name contains 'main', continuing with action."
 
-    - name: Filter SPP- Commits
-      id: filter_commits
+    - name: Get all commits
       run: |
-        echo "::set-output name=filtered_commits::$(echo "${GITHUB_EVENT_PATH}" | jq '."pull_request".commits | map(select(.message | test("^SPP-[0-9]{5}.*")) | .message) | unique | join(",\n")')"
+        commits=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+        https://api.github.com/repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/commits)
+        echo "Commits: ${commits}"
+
+    - name: Filter SPP- commits
+      run: |
+        filtered_commits=$(echo "$commits" | jq '.[] | select(.message | startswith("SPP-")) | select(.message | test("SPP-[0-9][0-9][0-9][0-9][0-9]"))')
+        echo "Filtered commits: ${filtered_commits}"
 
     - name: Cut commit message
-      id: cut_commit_message
       run: |
-        echo "::set-output name=cut_commits::$(echo "${steps.filter_commits.outputs.filtered_commits}" | sed 's/^SPP-[0-9]\{5\} //g')"
+        cut_commits=$(echo "$filtered_commits" | jq '.[].message | capture("(SPP-[0-9][0-9][0-9][0-9][0-9]).*")')
+        echo "Cut commits: ${cut_commits}"
 
-    - name: Add comment to pull request
-      if: steps.cut_commit_message.outputs.cut_commits != ''
+    - name: Add unique list as comment on pull request
       run: |
-        curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-        -X POST \
-        -d "{\"body\":\"Commits related to SPP-: \n\`\`\`\n${{ steps.cut_commit_message.outputs.cut_commits }}\n\`\`\`\"}" \
-        https://api.github.com/repos/$GITHUB_REPOSITORY/issues/$GITHUB_PULL_REQUEST/comments
-        
+        unique_commits=$(echo "$cut_commits" | sort | uniq)
+        comment="## SPP- Commits\n\n$(echo "$unique_commits" | awk '{print "-"$0}')"
+        curl -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+        -X POST -d "{\"body\":\"$comment\"}" \
+        https://api.github.com/repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments
