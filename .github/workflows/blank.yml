@@ -3,7 +3,7 @@ name: Check for SPP- Commits
 on:
   pull_request:
     branches:
-      - release*
+      - main
 
 jobs:
   verify_commits:
@@ -32,3 +32,4 @@ jobs:
         -X POST \
         -d "{\"body\":\"Commits related to SPP-: \n\`\`\`\n${{ steps.cut_commit_message.outputs.cut_commits }}\n\`\`\`\"}" \
         https://api.github.com/repos/${{ GITHUB_REPOSITORY }}/issues/${{ GITHUB_PULL_REQUEST }}/comments
+        
