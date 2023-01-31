@@ -31,5 +31,5 @@ jobs:
         curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
         -X POST \
         -d "{\"body\":\"Commits related to SPP-: \n\`\`\`\n${{ steps.cut_commit_message.outputs.cut_commits }}\n\`\`\`\"}" \
-        https://api.github.com/repos/${{ GITHUB_REPOSITORY }}/issues/${{ GITHUB_PULL_REQUEST }}/comments
+        https://api.github.com/repos/$GITHUB_REPOSITORY/issues/$GITHUB_PULL_REQUEST/comments
         
