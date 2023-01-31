@@ -1,4 +1,4 @@
-name: Check for SPP- Commits
+name: Verify SPP Commit Messages
 
 on:
   pull_request:
@@ -10,26 +10,22 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Get pull request commits
-      id: get_commits
-      run: |
-        echo "::set-output name=commits::$(curl -s https://api.github.com/repos/${GITHUB_REPOSITORY}/pulls/${GITHUB_PULL_REQUEST}/commits | jq '.[].sha')"
+    - name: Checkout code
+      uses: actions/checkout@v2
 
-    - name: Filter SPP- Commits
-      id: filter_commits
+    - name: Get Commit Messages
       run: |
-        echo "::set-output name=filtered_commits::$(echo "${GITHUB_EVENT_PATH}" | jq '."pull_request".commits | map(select(.message | test("^SPP-[0-9]{5}.*")) | .message) | unique | join(",\n")')"
+        git log origin/${{ github.head_ref }}..HEAD --pretty=format:"%s" > commits.txt
 
-    - name: Cut commit message
-      id: cut_commit_message
+    - name: Filter and Format SPP Commits
       run: |
-        echo "::set-output name=cut_commits::$(echo "${steps.filter_commits.outputs.filtered_commits}" | sed 's/^SPP-[0-9]\{5\} //g')"
+        cat commits.txt | grep "^SPP-[0-9]\{5\}" | sed "s/SPP-[0-9]\{5\}//g" | sed "s/^[ \t]*//" | sort -u > filtered_commits.txt
 
-    - name: Add comment to pull request
-      if: steps.cut_commit_message.outputs.cut_commits != ''
-      run: |
-        curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-        -X POST \
-        -d "{\"body\":\"Commits related to SPP-: \n\`\`\`\n${{ steps.cut_commit_message.outputs.cut_commits }}\n\`\`\`\"}" \
-        https://api.github.com/repos/$GITHUB_REPOSITORY/issues/$GITHUB_PULL_REQUEST/comments
-        
+    - name: Add Comment to Pull Request
+      uses: elgohr/Add-Comment-Action@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        body: |
+          List of Unique SPP Commit Messages:
+          $(cat filtered_commits.txt | awk '{print " - "$0}')
